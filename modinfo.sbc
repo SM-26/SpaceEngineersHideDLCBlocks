@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ModInfo xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <Name>DLCBlocks</Name>
+  <DisplayName>DLC Blocks Hider</DisplayName>
+  <Description>Hides DLC blocks from the creative menu. Forked from "Hide All DLC Blocks".</Description>
+  <Author>SM26 (forked from Kariaro)</Author>
+  <Version>0.0.1</Version>
+  <SemVer>0.0.1</SemVer>
+  <Priority>0</Priority>
+  <Dependencies>
+    <!-- Optional: add <Dependency>WorkshopId</Dependency> entries here -->
+  </Dependencies>
+</ModInfo>

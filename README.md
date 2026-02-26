@@ -1,38 +1,53 @@
-# Hide DLC Blocks
+ # Hide DLC Blocks
 
-This file will generate a local `SpaceEngineers` mod and hide all the dlc items.
+This repository contains `generate_mod.py`, a small utility that scans Space Engineers `.sbc` definition files and generates a local mod that hides DLC items by setting their `Public` value to `false`.
 
-I made this script after comming back to `SpaceEngineers` and having problems navigating the Creative menu with so much clutter in it.
-
-
-## Download from Steam Workshop
-This mod has been uploaded to Steam Workshop and can be downloaded here
+## Download
+The mod built by this script is available on the Steam Workshop:
 
 https://steamcommunity.com/sharedfiles/filedetails/?id=2990811919
 
+## Requirements
+
+- Python 3.8+
+- `lxml` (see `requirements.txt`)
+
+Install dependencies with:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -r requirements.txt
+```
+
 ## Usage
 
-If you are getting errors that `lxml` is not found run the following command
+The script supports interactive and non-interactive modes.
+
+1) Interactive (prompts for the Space Engineers path):
+
+```powershell
+python generate_mod.py
 ```
-python -m pip install lxml
+
+2) Non-interactive (pass the Space Engineers install path):
+
+```powershell
+python generate_mod.py "D:\SteamLibrary\steamapps\common\SpaceEngineers"
 ```
 
-Usage
-1. Open up `cmd.exe` and run `python generate_mod.py`
-2. You will be prompted to write the `SpaceEngineers` path on your computer
-3. If a mod with this name already exists it will ask you if you want to overwrite it (Y)es or (N)o
-4. The local mod should have been successfully generated and can be accessed in your `Mods` tab
+3) Test mode (prints the audit table without writing files):
 
-
-## Info
+```powershell
+python generate_mod.py "D:\SteamLibrary\steamapps\common\SpaceEngineers" --test
 ```
-This file was created to fix the overly cluttered GUI in SpaceEngineers
-You will be promped for where on your computer SpaceEngineers is located
 
-It will usually be found in '<Drive>/Steam/steamapps/common/SpaceEngineers'
+You can redirect the test output to a file to keep the audit report:
 
-After that this script will automatically generate a mod in your local mods folder.
-
-If there is a mod already named this you will be prompted if you want to
-replace it.
+```powershell
+python generate_mod.py "D:\SteamLibrary\steamapps\common\SpaceEngineers" --test > audit_report.md
 ```
+
+## Output
+
+By default the generated mod is written to your local Space Engineers Mods folder under `%APPDATA%\SpaceEngineers\Mods\HideAllDLCBlocks\Data\CubeBlocks_Hidden.sbc`.

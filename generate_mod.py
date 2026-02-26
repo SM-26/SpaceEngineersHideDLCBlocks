@@ -1,137 +1,147 @@
 import os
+import sys
+import shutil
+import copy
 from lxml import etree
 
-# Author : HardCoded
-# GitHub : https://github.com/Kariaro
-# Created: 2023-06-17
-#
-# Description:
-description="""
---- INFO ---
-
-  This file was created to fix the overly cluttered GUI in SpaceEngineers
-  You will be promped for where on your computer SpaceEngineers is located
-
-  It will usually be found in '<Drive>/Steam/steamapps/common/SpaceEngineers'
-
-  After that this script will automatically generate a mod in
-  '%s'
-  
-  If there is a mod already named this you will be prompted if you want to
-  replace it.
-  
---- INFO ---
-"""
-
-def get_files_from_path(path, extension = ''):
+def get_files_recursively(path, extension='.sbc'):
     result = []
-    for file in os.listdir(path):
-        if not file.endswith(extension):
-            continue
-        result.append(os.path.join(path, file))
+    for root, dirs, files in os.walk(path):
+        for file in files:
+            if file.lower().endswith(extension):
+                result.append(os.path.join(root, file))
     return result
 
-
-def normalze_xml(xml):
+def normalize_xml(xml):
     text = etree.tostring(xml).decode('utf-8')
     parser = etree.XMLParser(remove_blank_text=True)
     return etree.fromstring(text, parser=parser)
 
+def generate_dlc_hiding(se_path, filter_list):
+    data_path = os.path.join(se_path, 'Content', 'Data')
+    files = get_files_recursively(data_path, '.sbc')
 
-def generate_dlc_hiding(se_path, filter):
-    se_path = os.path.join(se_path, 'Content', 'Data', 'CubeBlocks')
-    files = get_files_from_path(se_path, '.sbc')
-
+    # collect tuples of (parent_tag, element_copy)
     hidden_items = []
-    
-    print('\nProcessing CubeBlocks')
-    print('  - Path \'%s\'' % se_path)
-    
-    # Make printing a bit prettier
-    name_length = 1
-    for file in files:
-        name_length = max(name_length, len(os.path.basename(file)))
-    
-    for file in files:
-        dlc_items = []
-        for item in etree.parse(os.path.join(se_path, file)).xpath('//Definition'): 
-            # Get DLC tag
-            dlc_tag = item.find('DLC')
-            
-            # Check if the item is from a DLC
-            if dlc_tag is not None:
-                # If the DLC is inside the filter we keep it
-                if dlc_tag.text in filter:
-                    continue
+    audit_log = {} 
+
+    for file_path in files:
+        try:
+            tree = etree.parse(file_path)
+            for item in tree.xpath('//Definition'): 
+                dlc_tag = item.find('DLC')
                 
-                # Update the public tag to 'False'. (Effectively hiding it from the GUI)
-                public_tag = item.find('Public')
-                if public_tag is None:
-                    public_tag = etree.SubElement(item, 'Public')
-                public_tag.text = 'false'
-                
-                # Add item to DLC hide list
-                dlc_items.append(item)
-        
-        # Print how many items were hidden
-        print(('  - %-' + str(name_length) + 's - %3d hidden') % (os.path.basename(file), len(dlc_items)))
-        hidden_items += dlc_items
-    print('\nTotal: %d hidden item(s)\n' % len(hidden_items))
+                if dlc_tag is not None:
+                    dlc_name = dlc_tag.text
+                    if dlc_name in filter_list:
+                        continue
+                    
+                    item_id = item.find('Id/SubtypeId')
+                    item_name = item_id.text if item_id is not None else "Unknown"
+
+                    public_tag = item.find('Public')
+                    if public_tag is None:
+                        public_tag = etree.SubElement(item, 'Public')
+                    public_tag.text = 'false'
+                    
+                    # copy the item to avoid repeating issues and preserve original parent tag
+                    parent = item.getparent()
+                    parent_tag = parent.tag if parent is not None else 'CubeBlocks'
+                    hidden_items.append((parent_tag, copy.deepcopy(item)))
+
+                    if dlc_name not in audit_log:
+                        audit_log[dlc_name] = 0
+                    audit_log[dlc_name] += 1
+        except Exception:
+            continue
+
+    print("\n| DLC Name | Items Hidden |")
+    print("| :--- | :--- |")
+    for dlc, count in sorted(audit_log.items()):
+        print(f"| {dlc} | {count} |")
     
-    # Create new sbc file with hidden definitions
+    print(f"\nTotal_Items_Hidden: {len(hidden_items)}")
+    
     dlc_hide_xml = etree.Element('Definitions', nsmap={
         'xsi': 'http://www.w3.org/2001/XMLSchema-instance',
         'xsd': 'http://www.w3.org/2001/XMLSchema'
     })
-    dlc_hide_items = etree.SubElement(dlc_hide_xml, 'CubeBlocks')
-    for item in hidden_items:
-        dlc_hide_items.append(item)
+    # group copied items by their original parent tag and append under matching containers
+    groups = {}
+    for parent_tag, elem in hidden_items:
+        if parent_tag not in groups:
+            groups[parent_tag] = etree.SubElement(dlc_hide_xml, parent_tag)
+        groups[parent_tag].append(elem)
     
-    # Fix tab issues and return the element tree
-    return etree.ElementTree(normalze_xml(dlc_hide_xml))
-
+    return etree.ElementTree(normalize_xml(dlc_hide_xml))
 
 def generate_local_mod(mod_path, mod_name, xml):
-    # Print the mod location
-    print('Local mod will be generated here')
-    print('  - Path \'%s\'' % mod_path)
-    
-    # Check if mod already exists
-    if os.path.exists(mod_path):
-        result = input('\nA mod named \'%s\' already exsists do you wish to replace it (y/n)' % mod_name)
-        if result.lower() != 'y':
-            print('Will not overwrite file. Stopping')
-            return
-    
-    # Generate folders
     os.makedirs(os.path.join(mod_path, 'Data'), exist_ok=True)
-    
-    # Write data
     data_path = os.path.join(mod_path, 'Data', 'CubeBlocks_Hidden.sbc')
     with open(data_path, 'wb') as f:
-        f.write(etree.tostring(xml, pretty_print=True, xml_declaration=True))
-    
-    # Print success
-    print('\nDone! Mod has been successfully generated')
+        f.write(etree.tostring(xml, pretty_print=True, xml_declaration=True, encoding='utf-8'))
+    # Some older variants expect a differently named file; write a duplicate with that name
+    alt_path = os.path.join(mod_path, 'Data', 'CubeBlocks_hider.sbc')
+    try:
+        shutil.copyfile(data_path, alt_path)
+    except Exception:
+        pass
 
+    # Copy an existing `modinfo.sbc`
+    possible_sources = [
+        os.path.join(os.path.dirname(__file__), 'modinfo.sbc'),
+        os.path.join(os.getcwd(), 'modinfo.sbc'),
+    ]
+
+    # Ensure mod root exists
+    os.makedirs(mod_path, exist_ok=True)
+    modinfo_path = os.path.join(mod_path, 'modinfo.sbc')
+    copied = False
+    for src in possible_sources:
+        if os.path.exists(src):
+            try:
+                shutil.copyfile(src, modinfo_path)
+                print(f"Copied modinfo from: {src}")
+                copied = True
+                break
+            except Exception as e:
+                print(f"Warning: failed to copy modinfo from {src}: {e}")
+
+    if not copied:
+        print("Note: no modinfo.sbc found next to the script or in CWD; skipping modinfo creation.")
+
+    print(f"Mod_Generated_At: {mod_path}")
 
 if __name__ == '__main__':
-    mod_name = 'HideAllDLCBlocks'
+    mod_name = 'DLCBlocksHider'
     mod_path = os.path.join(os.path.expandvars(r'%APPDATA%\SpaceEngineers\Mods'), mod_name)
-
-    print((description % mod_path).strip() + '\n')
-
-    # Prompt the user for the SpaceEngineers folder
-    while True:
-        se_path = input('Please write your SpaceEngineers folder path: (Press Ctrl+C to exit)\n> ')
-        if not os.path.exists(se_path):
-            print('Could not find the path \'%s\' please try again\n\n' % se_path)
-            continue
-        break
     
-    # Generate the xml file with hidden DLCs
+    # Check for --test flag anywhere in arguments
+    is_test = "--test" in sys.argv
+    # Filter out the script name and the --test flag to find the path
+    args = [a for a in sys.argv[1:] if a != "--test"]
+
+    # 1. Try to get path from argument
+    if len(args) >= 1:
+        se_path = args[0].strip('"')
+    else:
+        # 2. Fallback to interactive input
+        se_path = input('Please write your SpaceEngineers folder path: (Press Ctrl+C to exit)\n> ').strip('"')
+
+    # 3. Path Validation
+    if not se_path:
+        print("Error: No path provided.")
+        sys.exit(1)
+
+    exe_check = os.path.join(se_path, "Bin64", "SpaceEngineers.exe")
+    if not os.path.exists(exe_check):
+        print(f"Error: Invalid Space Engineers path. Could not find: {exe_check}")
+        sys.exit(1)
+    
+    # Run the generator
     dlc_hide_xml = generate_dlc_hiding(se_path, [])
     
-    # Generate the local mod from the hidden DLCs
-    generate_local_mod(mod_path, mod_name, dlc_hide_xml)
-    
+    if is_test:
+        print("\nTest_Mode_Enabled: No files were written.")
+    else:
+        generate_local_mod(mod_path, mod_name, dlc_hide_xml)
