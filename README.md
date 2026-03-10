@@ -51,3 +51,22 @@ python generate_mod.py "D:\SteamLibrary\steamapps\common\SpaceEngineers" --test 
 ## Output
 
 By default the generated mod is written to your local Space Engineers Mods folder under `%APPDATA%\SpaceEngineers\Mods\HideAllDLCBlocks\Data\CubeBlocks_Hidden.sbc`.
+
+## Preserving specific DLCs (optional)
+
+You can provide an optional second positional argument containing one or more DLC names to preserve (they will be excluded from removal). Provide a single name or a comma-separated list. The script comparison is case-insensitive and trims whitespace.
+
+Examples:
+
+```powershell
+# Preserve a single DLC named "StylePack"
+python generate_mod.py "D:\SteamLibrary\steamapps\common\SpaceEngineers" "StylePack"
+
+# Preserve multiple DLCs
+python generate_mod.py "D:\SteamLibrary\steamapps\common\SpaceEngineers" "StylePack, DecorativeBlocks"
+
+# Test mode with preserved DLCs (no files written)
+python generate_mod.py "D:\SteamLibrary\steamapps\common\SpaceEngineers" "StylePack" --test
+```
+
+Safety behavior: if you provide DLC name(s) but none of them are found while scanning the game's `.sbc` files, the script will treat the run as test-mode and will not write any files — this prevents accidental generation when the provided names are incorrect. If some provided names are found and others are not, the script will proceed but print a note listing the missing names.

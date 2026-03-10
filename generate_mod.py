@@ -25,15 +25,21 @@ def generate_dlc_hiding(se_path, filter_list):
     hidden_items = []
     audit_log = {} 
 
+    # track all encountered DLC names (normalized) so callers can validate existence
+    encountered_dlcs = set()
+
     for file_path in files:
         try:
             tree = etree.parse(file_path)
             for item in tree.xpath('//Definition'): 
                 dlc_tag = item.find('DLC')
-                
+
                 if dlc_tag is not None:
-                    dlc_name = dlc_tag.text
-                    if dlc_name in filter_list:
+                    dlc_name_raw = dlc_tag.text or ''
+                    dlc_name = dlc_name_raw.strip()
+                    dlc_name_norm = dlc_name.lower()
+                    encountered_dlcs.add(dlc_name_norm)
+                    if dlc_name_norm in filter_list:
                         continue
                     
                     item_id = item.find('Id/SubtypeId')
@@ -61,7 +67,7 @@ def generate_dlc_hiding(se_path, filter_list):
         print(f"| {dlc} | {count} |")
     
     print(f"\nTotal_Items_Hidden: {len(hidden_items)}")
-    
+
     dlc_hide_xml = etree.Element('Definitions', nsmap={
         'xsi': 'http://www.w3.org/2001/XMLSchema-instance',
         'xsd': 'http://www.w3.org/2001/XMLSchema'
@@ -73,7 +79,9 @@ def generate_dlc_hiding(se_path, filter_list):
             groups[parent_tag] = etree.SubElement(dlc_hide_xml, parent_tag)
         groups[parent_tag].append(elem)
     
-    return etree.ElementTree(normalize_xml(dlc_hide_xml))
+    # Return the generated XML and the set of encountered dlc names (normalized)
+    found_dlcs = set(n.lower() for n in audit_log.keys())
+    return etree.ElementTree(normalize_xml(dlc_hide_xml)), encountered_dlcs
 
 def generate_local_mod(mod_path, mod_name, xml):
     os.makedirs(os.path.join(mod_path, 'Data'), exist_ok=True)
@@ -118,15 +126,30 @@ if __name__ == '__main__':
     
     # Check for --test flag anywhere in arguments
     is_test = "--test" in sys.argv
-    # Filter out the script name and the --test flag to find the path
+    # Filter out the script name and the --test flag to find the path and optional keep-dlc
     args = [a for a in sys.argv[1:] if a != "--test"]
 
-    # 1. Try to get path from argument
+    # 1. Try to get path from first positional argument
     if len(args) >= 1:
         se_path = args[0].strip('"')
     else:
         # 2. Fallback to interactive input
         se_path = input('Please write your SpaceEngineers folder path: (Press Ctrl+C to exit)\n> ').strip('"')
+
+    # 3. Optional: keep one or more DLC names from being removed.
+    #    Provide as a second positional argument, e.g.:
+    #      python generate_mod.py "C:\Games\SpaceEngineers" "DLC_Name"
+    #    Or multiple comma-separated names: "DLC1,DLC2"
+    filter_list = []
+    if len(args) >= 2:
+        keep_input = args[1].strip('"')
+        # allow comma-separated list
+        filter_list = [v.strip() for v in keep_input.split(',') if v.strip()]
+        if filter_list:
+            print(f"Preserving DLC(s): {', '.join(filter_list)}")
+
+    # normalized set for comparisons (case-insensitive)
+    filter_list_norm = set(v.lower() for v in filter_list)
 
     # 3. Path Validation
     if not se_path:
@@ -138,9 +161,29 @@ if __name__ == '__main__':
         print(f"Error: Invalid Space Engineers path. Could not find: {exe_check}")
         sys.exit(1)
     
-    # Run the generator
-    dlc_hide_xml = generate_dlc_hiding(se_path, [])
-    
+    # Run the generator (pass normalized filter_list to skip hiding those DLCs)
+    dlc_hide_xml, encountered_dlcs = generate_dlc_hiding(se_path, filter_list_norm)
+
+    # Safety: if the user provided DLC(s) to preserve but none were found,
+    # treat as test mode (do not write files) and inform the user.
+    if filter_list:
+        missing_norm = [d for d in filter_list_norm if d not in encountered_dlcs]
+        # map back to display names when possible
+        missing_display = []
+        for mn in missing_norm:
+            for orig in filter_list:
+                if orig.lower() == mn:
+                    missing_display.append(orig)
+                    break
+            else:
+                missing_display.append(mn)
+
+        if missing_norm and len(missing_norm) == len(filter_list_norm):
+            print(f"Warning: Provided DLC(s) not found: {', '.join(missing_display)}. No files will be written.")
+            is_test = True
+        elif missing_norm:
+            print(f"Note: Some provided DLC(s) not found and will be ignored: {', '.join(missing_display)}")
+
     if is_test:
         print("\nTest_Mode_Enabled: No files were written.")
     else:
